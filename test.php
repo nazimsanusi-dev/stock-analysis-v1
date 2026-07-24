@@ -1,3 +1,4 @@
 <?php
 
-echo "TEST";
+$hello = "CODE";
+echo "TEST".$hello;
