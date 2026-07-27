@@ -1,0 +1,80 @@
+name: Run Python Stock Analysis
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  STOCK_API_KEY: ${{ secrets.STOCK_API_KEY }}
+  ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+  POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL }}
+  SCREENER_TICKERS: ${{ secrets.SCREENER_TICKERS }}
+  SCREENER_PERIOD: ${{ secrets.SCREENER_PERIOD }}
+
+jobs:
+  # ── Job 1: Run analysis directly with Python ───────────────────────────
+  run-analysis:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip --quiet
+          pip install -r requirements.txt --quiet
+
+      - name: Run stock analysis script
+        run: python analysis.py
+
+      - name: Upload CSV results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analysis-results
+          path: results/
+          if-no-files-found: ignore
+
+  # ── Job 2: Build & verify Docker image ────────────────────────────────
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: run-analysis
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image (no cache, non-interactive)
+        run: |
+          DOCKER_BUILDKIT=1 docker build \
+            --no-cache \
+            --progress=plain \
+            -t stock-analysis-v1:${{ github.sha }} \
+            -t stock-analysis-v1:latest \
+            .
+
+      - name: Run analysis inside Docker container
+        run: |
+          docker run --rm \
+            -e STOCK_API_KEY="${{ secrets.STOCK_API_KEY }}" \
+            -e ALPHA_VANTAGE_API_KEY="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
+            -e POLYGON_API_KEY="${{ secrets.POLYGON_API_KEY }}" \
+            -e SCREENER_TICKERS="${{ secrets.SCREENER_TICKERS }}" \
+            -e PYTHONUNBUFFERED=1 \
+            stock-analysis-v1:latest

@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  stock-analysis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Build args passed through automatically — no prompts
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+
+    image: stock-analysis-v1:latest
+    container_name: stock-analysis
+
+    # Map secrets from .env file to container environment
+    env_file:
+      - .env
+
+    # Override or supplement individual env vars here
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SCREENER_TICKERS=${SCREENER_TICKERS:-AAPL,MSFT,GOOGL,AMZN,NVDA,TSLA,META,BRK-B,JPM,JNJ}
+      - SCREENER_PERIOD=${SCREENER_PERIOD:-1y}
+      - ATH_LOOKBACK_DAYS=${ATH_LOOKBACK_DAYS:-252}
+      - RSI_PERIOD=${RSI_PERIOD:-14}
+      - MA_SHORT=${MA_SHORT:-50}
+      - MA_LONG=${MA_LONG:-200}
+
+    volumes:
+      # Persist CSV reports on the host
+      - ./results:/app/results
+
+    restart: "no"
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
