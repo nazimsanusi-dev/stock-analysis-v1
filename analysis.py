@@ -21,8 +21,8 @@ load_dotenv()
 colorama_init(autoreset=True)
 
 # ── Configuration (env-driven) ─────────────────────────────────────────────
-TICKERS_ENV = os.getenv("SCREENER_TICKERS") or \
-    "AAPL,MSFT,GOOGL,AMZN,NVDA,TSLA,META,BRK-B,JPM,JNJ,V,UNH,XOM,MA,HD"
+TICKERS_ENV = (os.getenv("SCREENER_TICKERS")
+               or "AAPL,MSFT,GOOGL,AMZN,NVDA,TSLA,META,BRK-B,JPM,JNJ,V,UNH,XOM,MA,HD")
 TICKERS = [t.strip().upper() for t in TICKERS_ENV.split(",") if t.strip()]
 PERIOD = os.getenv("SCREENER_PERIOD") or "1y"
 ATH_LOOKBACK = int(os.getenv("ATH_LOOKBACK_DAYS", "252"))
