@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: int_daily_returns
+    description: >
+      Enriched price rows with daily returns, rolling MAs (50/200), volume ratio,
+      golden-cross flag, and above-both-MAs flag. One row per ticker + trade_date.
+    columns:
+      - name: ticker
+        description: "Stock ticker symbol."
+        tests: [not_null]
+      - name: trade_date
+        description: "Trading date."
+        tests: [not_null]
+      - name: daily_return_pct
+        description: "Daily return as a percentage vs. previous close. Null for first row."
+      - name: ma_50
+        description: "50-day rolling average close price."
+      - name: ma_200
+        description: "200-day rolling average close price."
+      - name: volume_ratio
+        description: "Today's volume divided by 20-day average volume."
+      - name: is_golden_cross
+        description: "True when MA50 crossed above MA200 on this date."
+      - name: above_both_mas
+        description: "True when close price > MA50 and close price > MA200."

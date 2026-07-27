@@ -1,40 +1,124 @@
-version: "3.9"
+version: "3.8"
 
+# ── Shared Airflow configuration ───────────────────────────────────────────
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      BUILDKIT_INLINE_CACHE: "1"
+  image: stock-analysis-v1:latest
+  env_file: .env
+  environment:
+    # Airflow core
+    AIRFLOW__CORE__EXECUTOR:                    LocalExecutor
+    AIRFLOW__CORE__FERNET_KEY:                  "${AIRFLOW_FERNET_KEY:-}"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES:               "false"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN:        "postgresql+psycopg2://airflow:airflow@postgres:5432/airflow"
+    AIRFLOW__API__AUTH_BACKENDS:                "airflow.api.auth.backend.basic_auth"
+    AIRFLOW__WEBSERVER__SECRET_KEY:             "${AIRFLOW_SECRET_KEY:-change_me_in_production}"
+    # Logging
+    AIRFLOW__LOGGING__LOGGING_LEVEL:            "INFO"
+    # Project env
+    PYTHONUNBUFFERED:  "1"
+    DATA_LAKE_PATH:    "/opt/airflow/data/lake"
+    WAREHOUSE_PATH:    "/opt/airflow/warehouse/stock_analytics.duckdb"
+    DBT_PROJECT_DIR:   "/opt/airflow/dbt"
+    DBT_PROFILES_DIR:  "/opt/airflow/dbt"
+    DBT_TARGET:        "prod"
+    SCREENER_TICKERS:  "${SCREENER_TICKERS:-AAPL,MSFT,GOOGL,AMZN,NVDA,TSLA,META,BRK-B,JPM,JNJ}"
+    SCREENER_PERIOD:   "${SCREENER_PERIOD:-1y}"
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags          # live DAG reload
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./dbt:/opt/airflow/dbt                    # live dbt model reload
+    - ./etl:/opt/airflow/etl
+    - ./data/lake:/opt/airflow/data/lake        # Parquet lake
+    - ./warehouse:/opt/airflow/warehouse        # DuckDB file
+    - ./results:/opt/airflow/results
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+# ── Services ───────────────────────────────────────────────────────────────
 services:
-  stock-analysis:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      # Build args passed through automatically — no prompts
-      args:
-        BUILDKIT_INLINE_CACHE: "1"
 
-    image: stock-analysis-v1:latest
-    container_name: stock-analysis
-
-    # Map secrets from .env file to container environment
-    env_file:
-      - .env
-
-    # Override or supplement individual env vars here
+  # ── Metadata database ──────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: stock-postgres
     environment:
-      - PYTHONUNBUFFERED=1
-      - SCREENER_TICKERS=${SCREENER_TICKERS:-AAPL,MSFT,GOOGL,AMZN,NVDA,TSLA,META,BRK-B,JPM,JNJ}
-      - SCREENER_PERIOD=${SCREENER_PERIOD:-1y}
-      - ATH_LOOKBACK_DAYS=${ATH_LOOKBACK_DAYS:-252}
-      - RSI_PERIOD=${RSI_PERIOD:-14}
-      - MA_SHORT=${MA_SHORT:-50}
-      - MA_LONG=${MA_LONG:-200}
-
+      POSTGRES_USER:     airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB:       airflow
     volumes:
-      # Persist CSV reports on the host
-      - ./results:/app/results
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:     ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries:  5
+      start_period: 10s
+    restart: unless-stopped
 
+  # ── One-time init (runs and exits) ─────────────────────────────────────
+  airflow-init:
+    <<: *airflow-common
+    container_name: stock-airflow-init
+    command: >
+      bash -c "
+        airflow db upgrade &&
+        airflow users create
+          --username '${AIRFLOW_ADMIN_USER:-admin}'
+          --password '${AIRFLOW_ADMIN_PASSWORD:-admin}'
+          --firstname Admin --lastname User
+          --role Admin
+          --email '${AIRFLOW_ADMIN_EMAIL:-admin@example.com}'
+        echo '✔ Airflow initialised'
+      "
     restart: "no"
 
-    # Resource limits
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: "1.0"
+  # ── Webserver (UI on :8080) ────────────────────────────────────────────
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: stock-airflow-webserver
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test:     ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout:  10s
+      retries:  5
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ── Scheduler ─────────────────────────────────────────────────────────
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: stock-airflow-scheduler
+    command: scheduler
+    healthcheck:
+      test:     ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout:  10s
+      retries:  5
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ── Standalone analysis runner (optional — runs analysis.py directly) ──
+  stock-analysis:
+    <<: *airflow-common
+    container_name: stock-analysis
+    command: ["python", "/opt/airflow/analysis.py"]
+    restart: "no"
+    profiles: ["analysis"]   # only starts with: docker compose --profile analysis up
+
+volumes:
+  postgres_data:

@@ -1,0 +1,120 @@
+name: dbt CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "dbt/**"
+      - "etl/**"
+      - ".github/workflows/dbt_ci.yml"
+
+jobs:
+  # ── Job 1: SQL linting with sqlfluff ────────────────────────────────────
+  sqlfluff-lint:
+    name: SQLFluff Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install linting tools
+        run: |
+          pip install -q \
+            sqlfluff==3.0.7 \
+            sqlfluff-templater-dbt==3.0.7 \
+            dbt-duckdb==1.8.4
+
+      - name: Install dbt packages
+        run: cd dbt && dbt deps --profiles-dir .
+
+      - name: Run sqlfluff lint
+        run: |
+          sqlfluff lint dbt/models dbt/snapshots dbt/tests \
+            --dialect duckdb \
+            --templater dbt \
+            --config dbt/.sqlfluff \
+            --processes 4
+        env:
+          DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+          DATA_LAKE_PATH: ${{ github.workspace }}/data/lake
+          WAREHOUSE_PATH: ":memory:"
+
+  # ── Job 2: dbt build against in-memory DuckDB (staging target) ──────────
+  dbt-build:
+    name: dbt Build (staging)
+    runs-on: ubuntu-latest
+    needs: sqlfluff-lint
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dbt and ETL dependencies
+        run: |
+          pip install -q \
+            dbt-duckdb==1.8.4 \
+            duckdb==0.10.3 \
+            pyarrow==15.0.2 \
+            pandas==2.2.3 \
+            yfinance==0.2.51 \
+            tenacity==8.2.3
+
+      - name: Install dbt packages
+        run: cd dbt && dbt deps --profiles-dir .
+
+      - name: Seed test Parquet fixtures
+        # Generate minimal Parquet files so staging models have data to read
+        run: |
+          python - <<'EOF'
+          import os, pandas as pd, pyarrow as pa, pyarrow.parquet as pq
+          from datetime import date
+
+          lake = "data/lake"
+          tickers = ["AAPL", "MSFT"]
+          for t in tickers:
+              d = date(2024, 1, 2)
+              prices_path = f"{lake}/raw/prices/year={d.year}/month={d.month:02d}/day={d.day:02d}/{t}.parquet"
+              os.makedirs(os.path.dirname(prices_path), exist_ok=True)
+              df_p = pd.DataFrame([{
+                  "ticker": t, "Date": str(d),
+                  "Open": 150.0, "High": 155.0, "Low": 149.0, "Close": 153.0,
+                  "Volume": 1000000, "_extracted_at": "2024-01-02T10:00:00"
+              }])
+              pq.write_table(pa.Table.from_pandas(df_p), prices_path)
+
+              info_path = f"{lake}/raw/company_info/year={d.year}/month={d.month:02d}/{t}.parquet"
+              os.makedirs(os.path.dirname(info_path), exist_ok=True)
+              df_c = pd.DataFrame([{
+                  "ticker": t, "company_name": f"{t} Inc.", "sector": "Technology",
+                  "industry": "Software", "country": "US", "exchange": "NASDAQ",
+                  "currency": "USD", "market_cap": 3000000000000, "employees": 150000,
+                  "website": f"https://{t.lower()}.com", "description": f"{t} description.",
+                  "_extracted_at": "2024-01-02T10:00:00"
+              }])
+              pq.write_table(pa.Table.from_pandas(df_c), info_path)
+
+          print("✔ Test fixtures written")
+          EOF
+
+      - name: dbt build (staging target = in-memory DuckDB)
+        run: |
+          cd dbt
+          dbt build \
+            --target staging \
+            --profiles-dir . \
+            --vars '{"data_lake_path": "${{ github.workspace }}/data/lake"}' \
+            --no-use-colors
+        env:
+          DATA_LAKE_PATH: ${{ github.workspace }}/data/lake
+          WAREHOUSE_PATH: ":memory:"

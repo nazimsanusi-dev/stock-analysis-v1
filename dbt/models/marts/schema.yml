@@ -1,0 +1,76 @@
+version: 2
+
+models:
+
+  - name: dim_date
+    description: >
+      Pre-built date dimension spanning 2018–2035. One row per calendar day.
+      Includes fiscal labels, weekend flags, and approximate NYSE trading-day marker.
+    columns:
+      - name: date_sk
+        description: "Surrogate key: YYYYMMDD integer (e.g. 20240115)."
+        tests: [not_null, unique]
+      - name: full_date
+        description: "Calendar date."
+        tests: [not_null, unique]
+      - name: year
+        tests: [not_null]
+      - name: month
+        tests: [not_null]
+      - name: is_weekend
+        tests: [not_null]
+
+  - name: dim_company
+    description: >
+      Slowly-changing dimension (Type 2) for company attributes.
+      Sourced from the `company_snapshot` dbt snapshot.
+      Use `is_current = true` to retrieve the latest version of each company.
+    columns:
+      - name: company_sk
+        description: "Surrogate key — unique per ticker + SCD version."
+        tests: [not_null, unique]
+      - name: ticker
+        description: "Stock ticker symbol."
+        tests: [not_null]
+      - name: sector
+        tests: [not_null]
+      - name: is_current
+        description: "True for the active (latest) version of this company record."
+        tests: [not_null]
+      - name: valid_from
+        tests: [not_null]
+
+  - name: fact_daily_prices
+    description: >
+      Central fact table. Grain: one row per ticker per trading day.
+      Incremental materialisation — each Airflow run appends only new dates.
+      Foreign keys link to dim_date and dim_company.
+    columns:
+      - name: price_sk
+        description: "Surrogate key — hash of ticker + trade_date."
+        tests: [not_null, unique]
+      - name: date_sk
+        description: "Foreign key → dim_date.date_sk."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_sk
+      - name: company_sk
+        description: "Foreign key → dim_company.company_sk (current version)."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_company')
+              field: company_sk
+      - name: ticker
+        tests: [not_null]
+      - name: trade_date
+        tests: [not_null]
+      - name: close_price
+        tests: [not_null]
+      - name: volume
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"

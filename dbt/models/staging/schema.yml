@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: stg_raw_prices
+    description: >
+      Cleaned daily OHLCV price data. One row per ticker + trade_date.
+      Sourced from the Hive-partitioned Parquet lake written by the ETL pipeline.
+    columns:
+      - name: ticker
+        description: "Stock ticker symbol."
+        tests: [not_null]
+      - name: trade_date
+        description: "Trading date (date only, no time component)."
+        tests: [not_null]
+      - name: close_price
+        description: "Adjusted closing price in USD."
+        tests: [not_null]
+      - name: volume
+        description: "Shares traded. Always > 0 after cleaning."
+        tests: [not_null]
+
+  - name: stg_company_info
+    description: >
+      Cleaned company metadata snapshot. One row per ticker (most recent extraction).
+    columns:
+      - name: ticker
+        description: "Stock ticker symbol — primary key."
+        tests: [not_null, unique]
+      - name: sector
+        description: "GICS sector classification."
+      - name: industry
+        description: "GICS industry classification."

@@ -1,0 +1,27 @@
+stock_analytics:
+  target: dev
+  outputs:
+
+    dev:
+      type: duckdb
+      path: "{{ env_var('WAREHOUSE_PATH', '/opt/airflow/warehouse/stock_analytics.duckdb') }}"
+      threads: 4
+      extensions:
+        - parquet
+        - httpfs
+
+    # CI: uses in-memory DuckDB so no file system is needed in GitHub Actions
+    staging:
+      type: duckdb
+      path: ":memory:"
+      threads: 2
+      extensions:
+        - parquet
+
+    prod:
+      type: duckdb
+      path: "{{ env_var('WAREHOUSE_PATH', '/opt/airflow/warehouse/stock_analytics.duckdb') }}"
+      threads: 8
+      extensions:
+        - parquet
+        - httpfs

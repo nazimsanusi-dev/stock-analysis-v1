@@ -1,0 +1,25 @@
+[sqlfluff]
+templater = dbt
+dialect = duckdb
+# Max line length for SQL
+max_line_length = 120
+# Allow trailing commas in SELECT lists
+exclude_rules = LT12
+
+[sqlfluff:templater:dbt]
+project_dir = .
+profiles_dir = .
+target = staging
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.identifiers]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.functions]
+capitalisation_policy = upper
+
+[sqlfluff:indentation]
+indent_unit = space
+tab_space_size = 4

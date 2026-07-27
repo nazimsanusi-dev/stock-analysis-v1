@@ -1,44 +1,42 @@
-# ── Stage 1: Builder ──────────────────────────────────────────────────────
-FROM python:3.12-slim AS builder
+# ── Base: official Airflow image (includes Python 3.12) ───────────────────
+FROM apache/airflow:2.9.3-python3.12
 
-# Non-interactive, no prompts, no cache
+# Non-interactive, no prompts, no cache for any pip install
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
-WORKDIR /install
-
-COPY requirements.txt .
-
-RUN pip install --upgrade pip --quiet && \
-    pip install --prefix=/install/packages -r requirements.txt --quiet
-
-
-# ── Stage 2: Runtime ──────────────────────────────────────────────────────
-FROM python:3.12-slim AS runtime
-
-ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/opt/airflow
 
-# Copy installed packages from builder
-COPY --from=builder /install/packages /usr/local
+USER root
 
-WORKDIR /app
+# System dependencies needed by dbt-duckdb and pyarrow
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        git \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash analyst && \
-    mkdir -p /app/results && \
-    chown -R analyst:analyst /app
+USER airflow
 
-COPY --chown=analyst:analyst analysis.py .
+# ── Install extra Python packages ─────────────────────────────────────────
+COPY requirements.txt          /tmp/requirements.txt
+COPY requirements-airflow.txt  /tmp/requirements-airflow.txt
 
-USER analyst
+RUN pip install --no-cache-dir --upgrade pip --quiet && \
+    pip install --no-cache-dir -r /tmp/requirements.txt --quiet && \
+    pip install --no-cache-dir -r /tmp/requirements-airflow.txt \
+        --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.9.3/constraints-3.12.txt" \
+        --quiet
 
-# Results volume mount point
-VOLUME ["/app/results"]
+# ── Copy project source ───────────────────────────────────────────────────
+COPY --chown=airflow:root analysis.py      /opt/airflow/analysis.py
+COPY --chown=airflow:root etl/             /opt/airflow/etl/
+COPY --chown=airflow:root dbt/             /opt/airflow/dbt/
+COPY --chown=airflow:root airflow/dags/    /opt/airflow/dags/
 
-CMD ["python", "analysis.py"]
+# Pre-create writable directories for lake, warehouse, and results
+RUN mkdir -p /opt/airflow/data/lake /opt/airflow/warehouse /opt/airflow/results
+
+VOLUME ["/opt/airflow/data/lake", "/opt/airflow/warehouse", "/opt/airflow/results"]

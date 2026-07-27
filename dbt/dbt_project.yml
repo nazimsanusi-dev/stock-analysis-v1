@@ -1,0 +1,51 @@
+name: "stock_analytics"
+version: "1.0.0"
+config-version: 2
+
+profile: "stock_analytics"
+
+model-paths:    ["models"]
+analysis-paths: ["analyses"]
+test-paths:     ["tests"]
+seed-paths:     ["seeds"]
+macro-paths:    ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path:  "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # Override at runtime: dbt run --vars '{"data_lake_path": "/custom/path"}'
+  data_lake_path: "{{ env_var('DATA_LAKE_PATH', '/opt/airflow/data/lake') }}"
+
+models:
+  stock_analytics:
+    staging:
+      +materialized: view
+      +schema: staging
+      +docs:
+        node_color: "#2196F3"
+
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+      +docs:
+        node_color: "#FF9800"
+
+    marts:
+      +materialized: table
+      +schema: marts
+      +docs:
+        node_color: "#4CAF50"
+
+snapshots:
+  stock_analytics:
+    +target_schema: snapshots
+    +docs:
+      node_color: "#9C27B0"
+
+# Data freshness thresholds for source checks
+sources:
+  stock_analytics:
+    +warn_after:  {count: 12, period: hour}
+    +error_after: {count: 24, period: hour}
