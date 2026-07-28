@@ -11,6 +11,10 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
+import requests
+from requests_cache import CacheMixin
+from requests_ratelimiter import LimiterMixin
+from requests import Session
 import yfinance as yf
 from dotenv import load_dotenv
 from tabulate import tabulate
@@ -19,6 +23,18 @@ from colorama import Fore, Style, init as colorama_init
 warnings.filterwarnings("ignore")
 load_dotenv()
 colorama_init(autoreset=True)
+
+# ── Custom Session to bypass Yahoo Datacenter Blocks ────────────────────────
+class CachedLimiterSession(CacheMixin, LimiterMixin, Session):
+    pass
+
+session = CachedLimiterSession(
+    per_second=2,
+    expire_after=3600,
+)
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+})
 
 # ── Configuration (env-driven) ─────────────────────────────────────────────
 TICKERS_ENV = (os.getenv("SCREENER_TICKERS")
