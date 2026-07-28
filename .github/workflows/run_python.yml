@@ -1,4 +1,4 @@
-name: Run Python Stock Analysis
+name: Run Standalone Stock Analysis
 
 on:
   push:
@@ -17,7 +17,8 @@ env:
   NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL }}
   SCREENER_TICKERS: ${{ secrets.SCREENER_TICKERS }}
   SCREENER_PERIOD: ${{ secrets.SCREENER_PERIOD }}
-  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
+  
+ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
 
 jobs:
   # ── Job 1: Run analysis directly with Python ───────────────────────────
@@ -39,7 +40,7 @@ jobs:
           pip install -r requirements.txt --quiet
 
       - name: Run stock analysis script
-        run: python analysis.py
+        run: python standalone/analysis.py
 
       - name: Upload CSV results
         if: always()

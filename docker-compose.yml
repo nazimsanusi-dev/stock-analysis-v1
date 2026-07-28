@@ -116,7 +116,7 @@ services:
   stock-analysis:
     <<: *airflow-common
     container_name: stock-analysis
-    command: ["python", "/opt/airflow/analysis.py"]
+    command: ["python", "/opt/airflow/standalone/analysis.py"]
     restart: "no"
     profiles: ["analysis"]   # only starts with: docker compose --profile analysis up
 

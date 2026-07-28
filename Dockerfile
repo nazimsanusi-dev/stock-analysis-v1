@@ -31,7 +31,7 @@ RUN pip install --no-cache-dir --upgrade pip --quiet && \
         --quiet
 
 # ── Copy project source ───────────────────────────────────────────────────
-COPY --chown=airflow:root analysis.py      /opt/airflow/analysis.py
+COPY --chown=airflow:root standalone/analysis.py  /opt/airflow/standalone/analysis.py
 COPY --chown=airflow:root etl/             /opt/airflow/etl/
 COPY --chown=airflow:root dbt/             /opt/airflow/dbt/
 COPY --chown=airflow:root airflow/dags/    /opt/airflow/dags/
