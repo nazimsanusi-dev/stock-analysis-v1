@@ -133,10 +133,10 @@ class StockDataTransformer:
         if df.empty:
             return {"label": label, "rows": 0, "status": "empty"}
         report = {
-            "label":       label,
-            "rows":        len(df),
-            "null_pct":    {c: round(df[c].isna().mean() * 100, 2) for c in df.columns},
-            "date_range":  None,
+            "label":      label,
+            "rows":       len(df),
+            "null_pct":   {c: float(round(df[c].isna().mean() * 100, 2)) for c in df.columns},
+            "date_range": None,
         }
         if "trade_date" in df.columns:
             report["date_range"] = {
