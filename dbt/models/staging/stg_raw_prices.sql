@@ -19,12 +19,12 @@ WITH source AS (
 renamed AS (
     SELECT
         UPPER(TRIM(ticker))                           AS ticker,
-        CAST("Date"   AS DATE)                        AS trade_date,
-        ROUND(CAST("Open"   AS DOUBLE), 6)            AS open_price,
-        ROUND(CAST("High"   AS DOUBLE), 6)            AS high_price,
-        ROUND(CAST("Low"    AS DOUBLE), 6)            AS low_price,
-        ROUND(CAST("Close"  AS DOUBLE), 6)            AS close_price,
-        CAST("Volume" AS BIGINT)                      AS volume,
+        CAST(trade_date   AS DATE)                    AS trade_date,
+        ROUND(CAST(open_price   AS DOUBLE), 6)        AS open_price,
+        ROUND(CAST(high_price   AS DOUBLE), 6)        AS high_price,
+        ROUND(CAST(low_price    AS DOUBLE), 6)        AS low_price,
+        ROUND(CAST(close_price  AS DOUBLE), 6)        AS close_price,
+        CAST(volume AS BIGINT)                        AS volume,
         TRY_CAST(_extracted_at AS TIMESTAMP)          AS _extracted_at,
         CURRENT_TIMESTAMP                             AS _loaded_at
     FROM source
